@@ -1,65 +1,112 @@
 package main
 
 import (
+	"flag"
 	"github.com/bwmarrin/discordgo"
 	"log"
-	"math/rand"
 	"os"
 	"os/signal"
-	"strings"
-	"syscall"
 )
 
-func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
+var (
+	GuildID        = flag.String("guild", "524539398180700190", "guild ID - global mode active if empty")
+	BotTokenPath   = flag.String("token", "", "bot token path")
+	RemoveCommands = flag.Bool("remove", true, "remove commands")
+)
 
-	// ignore messages from self
-	if m.Author.ID == s.State.User.ID {
-		return
+var s *discordgo.Session
+
+func init() {
+	flag.Parse()
+	var err error
+	token := getToken(*BotTokenPath)
+	s, err = discordgo.New("Bot " + token)
+	if err != nil {
+		log.Fatalf("Invalid bot parameters: %v", err)
 	}
+	s.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+		if h, ok := CommandHandlers[i.ApplicationCommandData().Name]; ok {
+			h(s, i)
+		}
+	})
+}
 
-	if strings.Contains(m.Content, "73") {
-		s.ChannelMessageSend(m.ChannelID, "73 loooooool :joy::joy::joy:")
-	}
-	if strings.Contains(strings.ToLower(m.Content), "ooo") {
-		x, y := 2, 20
-		n := rand.Intn(y) + x
-
-		msg := "O" + strings.Repeat("o", n)
-
-		s.ChannelMessageSend(m.ChannelID, msg)
-	}
+var commands = []*discordgo.ApplicationCommand{
+	{
+		Name:        "wiki",
+		Description: "Wiki Search",
+		Options: []*discordgo.ApplicationCommandOption{
+			{
+				Type:        discordgo.ApplicationCommandOptionString,
+				Name:        "search",
+				Description: "Term to search the wiki for",
+				Required:    true,
+			},
+		},
+	},
 }
 
 func main() {
-	// get token
-	Token, err := os.ReadFile(".env")
-	if err != nil {
-		log.Fatalf("Error reading token from .env file: %v", err)
-	}
-	if string(Token) == "" {
-		log.Fatal("Token environment variable not set")
-	}
-
-	// create Discordgo session
-	dg, err := discordgo.New("Bot " + string(Token))
-	if err != nil {
-		log.Fatalf("error creating Discord session: %v", err)
-	}
-	// add intents/permissions
-	dg.Identify.Intents = discordgo.IntentsGuildMessages
-
-	// register message responder function
-	dg.AddHandler(messageCreate)
-
-	err = dg.Open()
+	s.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
+		log.Printf("Logged in as %v#%v", s.State.User.Username, s.State.User.Discriminator)
+	})
+	err := s.Open()
 	if err != nil {
 		log.Fatalf("error opening connection: %v", err)
 	}
+	defer s.Close()
 
-	log.Println("Bot is now running.  Use ctrl-c to close.")
+	s.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+		if h, ok := CommandHandlers[i.ApplicationCommandData().Name]; ok {
+			h(s, i)
+		}
+	})
+	registeredCommands := make([]*discordgo.ApplicationCommand, len(commands))
+
+	for i, val := range commands {
+		cmd, err := s.ApplicationCommandCreate(s.State.User.ID, "", val)
+		if err != nil {
+			log.Printf("cannot create command: %v\n", err)
+		}
+		registeredCommands[i] = cmd
+	}
+
+	s.Identify.Intents = discordgo.IntentsGuildMessages
+	s.AddHandler(messageCreate)
+
 	sc := make(chan os.Signal, 1)
-	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
+	signal.Notify(sc, os.Interrupt)
+	log.Println("Press Ctrl-c to exit.")
 	<-sc
 
-	dg.Close()
+	registeredCommands, err = s.ApplicationCommands(s.State.User.ID, *GuildID)
+	if err != nil {
+		log.Fatalf("Could not fetch registered commands: %v", err)
+	}
+
+	if *RemoveCommands {
+		log.Println("Removing commands...")
+		for _, cmd := range registeredCommands {
+			err2 := s.ApplicationCommandDelete(s.State.User.ID, *GuildID, cmd.ID)
+			if err2 != nil {
+				log.Printf("cannot delete command: %v\n", err2)
+			}
+		}
+	}
+	log.Println("shutting down.")
+
+}
+
+func getToken(path string) string {
+	if path == "" {
+		path = ".env"
+	}
+	Token, err := os.ReadFile(path)
+	if err != nil {
+		log.Fatalf("error reading token from .env file: %v", err)
+	}
+	if string(Token) == "" {
+		log.Fatal("token environment variable not set")
+	}
+	return string(Token)
 }
