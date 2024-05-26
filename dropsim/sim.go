@@ -1,12 +1,15 @@
-package main
+package dropsim
 
 import (
 	"fmt"
+	"github.com/dustin/go-humanize"
 	"math"
 	"math/rand"
+	"sort"
 )
 
-func (dt *DropTable) Sample(n int) {
+func (dt *DropTable) Sample(n int) string {
+	var response string = "You received:\n"
 	itemCounts := make(map[string]int)
 	for _, v := range dt.Drops {
 		itemCounts[v.Name] = 0
@@ -16,13 +19,23 @@ func (dt *DropTable) Sample(n int) {
 		r := rand.Intn(len(table))
 		itemCounts[table[r].Name] += table[r].QuantityAvg
 	}
-	fmt.Printf("From %d kills:\n", n)
-	for k, v := range itemCounts {
-		if v > 0 {
-			fmt.Printf("You received %dx %s\n", v, k)
+
+	keys := make([]string, 0, len(itemCounts))
+	for k := range itemCounts {
+		keys = append(keys, k)
+	}
+
+	sort.SliceStable(keys, func(i, j int) bool {
+		return itemCounts[keys[i]] > itemCounts[keys[j]]
+	})
+
+	for _, k := range keys {
+		if itemCounts[k] > 0 {
+			response += fmt.Sprintf("%s %s\n", humanize.Comma(int64(itemCounts[k])), k)
 		}
 
 	}
+	return response
 }
 
 func (dt *DropTable) CheckTotalP() float64 {
