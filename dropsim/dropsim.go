@@ -22,13 +22,17 @@ var SupportedBosses = []string{
 	"Giant Mole",
 	"Sarachnis",
 	"Corporeal Beast",
+	"Kalphite Queen",
+	"Barrows chest",
+	"Zulrah",
 }
 
 var BannedItems = "brimstone key" +
 	"frozen key piece (saradomin)" +
 	"frozen key piece (bandos)" +
 	"frozen key piece (zamorak)" +
-	"frozen key piece (armadyl)"
+	"frozen key piece (armadyl)" +
+	"Kq head (tattered)"
 
 type Drop struct {
 	Name         string `json:"Dropped item"`
@@ -37,6 +41,7 @@ type Drop struct {
 	QuantityHigh int `json:"Quantity High"`
 	QuantityLow  int `json:"Quantity Low"`
 	QuantityAvg  int
+	Rolls        int `json:"Rolls"`
 }
 
 type DropTable struct {
@@ -80,6 +85,10 @@ func main() {
 }
 
 func (d *Drop) convertRarity() error {
+	if d.Rarity == "Undefined" {
+		d.RawRarity = 1
+		return nil
+	}
 	ndc := strings.ReplaceAll(d.Rarity, ",", "")
 	nd := strings.Split(ndc, "/")
 	n, err := strconv.ParseFloat(nd[0], 64)
@@ -113,10 +122,13 @@ func (d *DropWrapper) ParseDrops() DropTable {
 				drop.Rarity = "1/40"
 			case "Rare":
 				drop.Rarity = "1/128"
+			case "Once":
+				drop.Rarity = "Undefined"
 			}
 			if err := drop.convertRarity(); err != nil {
 				log.Fatalf("Error converting rarity: %v", err)
 			}
+			drop.Name = strings.ReplaceAll(drop.Name, "#", " ")
 			drop.QuantityAvg = (drop.QuantityHigh + drop.QuantityLow) / 2
 			if !strings.Contains(BannedItems, strings.ToLower(drop.Name)) {
 				output.Drops = append(output.Drops, drop)
@@ -124,6 +136,7 @@ func (d *DropWrapper) ParseDrops() DropTable {
 		}
 
 	}
+	output.Rolls = output.Drops[0].Rolls
 	return output
 }
 
@@ -134,7 +147,7 @@ func GetQuery(boss string) url.URL {
 		Path:     "api.php",
 		RawQuery: "action=ask&format=json&query=",
 	}
-	q := fmt.Sprintf("[[-Has subobject::%s]]|[[Drop JSON::+]]|?Drop JSON", boss)
+	q := fmt.Sprintf("[[-Has subobject::%s]]|[[Drop JSON::+]]|?Drop JSON|limit=10000", boss)
 	u.RawQuery += url.QueryEscape(q)
 	return u
 }

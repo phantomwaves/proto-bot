@@ -16,8 +16,11 @@ func (dt *DropTable) Sample(n int) string {
 	}
 	table := dt.MakeTable()
 	for i := 0; i < n; i++ {
-		r := rand.Intn(len(table))
-		itemCounts[table[r].Name] += table[r].QuantityAvg
+		for j := 0; j < dt.Rolls; j++ {
+			r := rand.Intn(len(table))
+			itemCounts[table[r].Name] += table[r].QuantityAvg
+		}
+
 	}
 
 	keys := make([]string, 0, len(itemCounts))
@@ -70,7 +73,6 @@ func (dt *DropTable) MakeTable() []Drop {
 			item = append(item, drop)
 		}
 		table = append(table, item...)
-		//fmt.Printf("item: %s, weighted: %d\n", drop.Name, weighted)
 
 	}
 	return table

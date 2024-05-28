@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"github.com/bwmarrin/discordgo"
+	"github.com/phantomwaves/proto/dropsim"
 	"log"
 	"os"
 	"os/signal"
@@ -16,6 +17,18 @@ var (
 )
 
 var s *discordgo.Session
+
+func getDropsimChoices(bosses []string) []*discordgo.ApplicationCommandOptionChoice {
+	var output []*discordgo.ApplicationCommandOptionChoice
+	for _, boss := range bosses {
+		var choice = discordgo.ApplicationCommandOptionChoice{
+			Name:  boss,
+			Value: boss,
+		}
+		output = append(output, &choice)
+	}
+	return output
+}
 
 func init() {
 	flag.Parse()
@@ -54,6 +67,7 @@ var commands = []*discordgo.ApplicationCommand{
 				Name:        "name",
 				Description: "Full name of the boss to simulate",
 				Required:    true,
+				Choices:     getDropsimChoices(dropsim.SupportedBosses),
 			},
 			{
 				Type:        discordgo.ApplicationCommandOptionInteger,
