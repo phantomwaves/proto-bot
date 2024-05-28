@@ -11,6 +11,19 @@ import (
 	"strings"
 )
 
+var SupportedBosses = []string{
+	"General Graardor",
+	"Commander Zilyana",
+	"Kree'arra",
+	"K'ril Tsutsaroth",
+	"Dagannoth Rex",
+	"Dagannoth Prime",
+	"Dagannoth Supreme",
+	"Giant Mole",
+	"Sarachnis",
+	"Corporeal Beast",
+}
+
 var BannedItems = "brimstone key" +
 	"frozen key piece (saradomin)" +
 	"frozen key piece (bandos)" +
@@ -18,11 +31,11 @@ var BannedItems = "brimstone key" +
 	"frozen key piece (armadyl)"
 
 type Drop struct {
-	Name         string
-	Rarity       string
+	Name         string `json:"Dropped item"`
+	Rarity       string `json:"Rarity"`
 	RawRarity    float64
-	QuantityHigh int
-	QuantityLow  int
+	QuantityHigh int `json:"Quantity High"`
+	QuantityLow  int `json:"Quantity Low"`
 	QuantityAvg  int
 }
 
@@ -31,7 +44,7 @@ type DropTable struct {
 	Rolls int
 }
 
-type DataWrapper struct {
+type DropWrapper struct {
 	Query struct {
 		Results map[string]struct {
 			Printouts struct {
@@ -51,7 +64,7 @@ func main() {
 	}
 	b, err := io.ReadAll(res.Body)
 
-	dat := DataWrapper{}
+	dat := DropWrapper{}
 	err2 := json.Unmarshal(b, &dat)
 	if err2 != nil {
 		log.Fatal(err2)
@@ -66,63 +79,50 @@ func main() {
 
 }
 
-func (d *DataWrapper) ParseDrops() DropTable {
+func (d *Drop) convertRarity() error {
+	ndc := strings.ReplaceAll(d.Rarity, ",", "")
+	nd := strings.Split(ndc, "/")
+	n, err := strconv.ParseFloat(nd[0], 64)
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+	de, err := strconv.ParseFloat(nd[1], 64)
+	if err != nil {
+		log.Fatal(err)
+		return err
+	}
+	d.RawRarity = n / de
+	return nil
+}
+
+func (d *DropWrapper) ParseDrops() DropTable {
 	var output DropTable
 	for _, v := range d.Query.Results {
-
-		drop := Drop{}
-		dropJSON := strings.Join(v.Printouts.DropJSON, "")
-		dropJSON = strings.Trim(dropJSON, "{}")
-		dropJSON = strings.ReplaceAll(dropJSON, ":", "")
-		dropJSON = strings.ReplaceAll(dropJSON, ",", "")
-		dropJSON = strings.ReplaceAll(dropJSON, "#", "")
-		dropJSON = strings.ReplaceAll(dropJSON, "Alt Rarity", "")
-		dropJSON = strings.ReplaceAll(dropJSON, "Name Notes", "")
-		dropJSON = strings.ReplaceAll(dropJSON, "Rarity Notes", "")
-		dropJSON = strings.ReplaceAll(dropJSON, " Dash", "")
-		dropJSON = strings.ReplaceAll(dropJSON, " Dash", "")
-
-		vals := strings.Split(dropJSON, "\"")
-		var cleanedVals []string
-		for i := 0; i < len(vals)-1; i++ {
-			if len(vals[i]) > 0 {
-				cleanedVals = append(cleanedVals, vals[i])
+		for _, d := range v.Printouts.DropJSON {
+			drop := Drop{}
+			if err := json.Unmarshal([]byte(d), &drop); err != nil {
+				log.Fatalf("Error unmarshalling inner JSON: %v", err)
+			}
+			switch drop.Rarity {
+			case "Always":
+				drop.Rarity = "1/1"
+			case "Common":
+				drop.Rarity = "1/15"
+			case "Uncommon":
+				drop.Rarity = "1/40"
+			case "Rare":
+				drop.Rarity = "1/128"
+			}
+			if err := drop.convertRarity(); err != nil {
+				log.Fatalf("Error converting rarity: %v", err)
+			}
+			drop.QuantityAvg = (drop.QuantityHigh + drop.QuantityLow) / 2
+			if !strings.Contains(BannedItems, strings.ToLower(drop.Name)) {
+				output.Drops = append(output.Drops, drop)
 			}
 		}
-		for i := 0; i < len(cleanedVals)-1; i += 2 {
-			switch cleanedVals[i] {
-			case "Dropped item":
-				drop.Name = cleanedVals[i+1]
 
-			case "Rarity":
-				drop.Rarity = cleanedVals[i+1]
-				if cleanedVals[i+1] == "Always" {
-					cleanedVals[i+1] = "1/1"
-				}
-				nd := strings.Split(cleanedVals[i+1], "/")
-
-				num, err := strconv.ParseFloat(nd[0], 64)
-				if err != nil {
-					log.Fatal(err)
-				}
-				den, err := strconv.ParseFloat(nd[1], 64)
-				if err != nil {
-					log.Fatal(err)
-				}
-				drop.RawRarity = num / den
-
-			case "Quantity High":
-				drop.QuantityHigh, _ = strconv.Atoi(cleanedVals[i+1])
-			case "Quantity Low":
-				drop.QuantityLow, _ = strconv.Atoi(cleanedVals[i+1])
-			}
-		}
-		drop.QuantityAvg = (drop.QuantityHigh + drop.QuantityLow) / 2
-
-		if !strings.Contains(BannedItems, strings.ToLower(drop.Name)) {
-			output.Drops = append(output.Drops, drop)
-		}
-		
 	}
 	return output
 }

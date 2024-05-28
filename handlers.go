@@ -48,31 +48,45 @@ var CommandHandlers = map[string]func(s *discordgo.Session, i *discordgo.Interac
 
 	"dropsim": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		options := i.ApplicationCommandData().Options
+		if !func() bool {
+			for _, b := range dropsim.SupportedBosses {
+				if b == i.ApplicationCommandData().Options[0].StringValue() {
+					return true
+				}
+			}
+			return false
+		}() {
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: fmt.Sprintf("Sorry, %s is not supported yet.", i.ApplicationCommandData().Options[0].StringValue()),
+				},
+			})
+		} else {
+			u := dropsim.GetQuery(options[0].StringValue())
+			log.Println(u.String())
+			res, err := http.Get(u.String())
+			if err != nil {
+				log.Printf("wiki request failed. %v\n", err)
+			}
+			b, _ := io.ReadAll(res.Body)
+			dat := dropsim.DropWrapper{}
+			err = json.Unmarshal(b, &dat)
+			if err != nil {
+				log.Printf("error unmarshalling json: %v\n", err)
+			}
+			dt := dat.ParseDrops()
+			response := fmt.Sprintf("Simulating loot from %v %v kills...\n",
+				options[1].IntValue(), options[0].StringValue())
+			response += dt.Sample(int(options[1].IntValue()))
 
-		u := dropsim.GetQuery(options[0].StringValue())
-		res, err := http.Get(u.String())
-		if err != nil {
-			log.Printf("wiki request failed. %v\n", err)
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: response,
+				},
+			})
 		}
-		b, _ := io.ReadAll(res.Body)
-		dat := dropsim.DataWrapper{}
-		err = json.Unmarshal(b, &dat)
-		if err != nil {
-			log.Printf("error unmarshaling json: %v\n", err)
-		}
-		dt := dat.ParseDrops()
-		//log.Printf("Simulating loot from %v %v kills...\n",
-		//	options[1].IntValue(), options[0].StringValue())
-		response := fmt.Sprintf("Simulating loot from %v %v kills...\n",
-			options[1].IntValue(), options[0].StringValue())
-		response += dt.Sample(int(options[1].IntValue()))
-
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: response,
-			},
-		})
 
 	},
 }
