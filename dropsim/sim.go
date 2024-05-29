@@ -1,44 +1,54 @@
 package dropsim
 
 import (
-	"fmt"
-	"github.com/dustin/go-humanize"
 	"math"
 	"math/rand"
-	"sort"
+	"sync"
 )
 
-func (dt *DropTable) Sample(n int) string {
-	var response string = "You received:\n"
-	itemCounts := make(map[string]int)
+type DropSample struct {
+	vals map[string]int
+	mu   sync.Mutex
+}
+
+func (dt *DropTable) roll(c chan int, x int) {
+	c <- rand.Intn(x)
+}
+
+func (ds *DropSample) add(key string, num int) {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+	ds.vals[key] += num
+}
+
+func (ds *DropSample) val(key string) int {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+	return ds.vals[key]
+}
+
+func (dt *DropTable) Sample(n int) map[string]int {
+	itemCounts := DropSample{vals: make(map[string]int)}
+	c := make(chan int)
 	for _, v := range dt.Drops {
-		itemCounts[v.Name] = 0
+		itemCounts.vals[v.Name] = 0
 	}
 	table := dt.MakeTable()
-	for i := 0; i < n; i++ {
-		for j := 0; j < dt.Rolls; j++ {
-			r := rand.Intn(len(table))
-			itemCounts[table[r].Name] += table[r].QuantityAvg
+
+	for i := 0; i < n*dt.Rolls; i++ {
+		go dt.roll(c, len(table))
+		go func() {
+			r := <-c
+			itemCounts.add(table[r].Name, table[r].QuantityAvg)
+		}()
+
+	}
+	for _, j := range dt.Drops {
+		if j.RawRarity == 1 {
+			itemCounts.vals[j.Name] += n * j.QuantityAvg
 		}
-
 	}
-
-	keys := make([]string, 0, len(itemCounts))
-	for k := range itemCounts {
-		keys = append(keys, k)
-	}
-
-	sort.SliceStable(keys, func(i, j int) bool {
-		return itemCounts[keys[i]] > itemCounts[keys[j]]
-	})
-
-	for _, k := range keys {
-		if itemCounts[k] > 0 {
-			response += fmt.Sprintf("%s %s\n", humanize.Comma(int64(itemCounts[k])), k)
-		}
-
-	}
-	return response
+	return itemCounts.vals
 }
 
 func (dt *DropTable) CheckTotalP() float64 {

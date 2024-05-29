@@ -1,6 +1,7 @@
 html {
     box-sizing: border-box;
 }
+
 *,
 *::before,
 *::after {
@@ -8,10 +9,10 @@ html {
 }
 
 @font-face {
-    font-family: RuneScape;
+    font-family: 'RuneScape';
     src: url(runescape_small.ttf);
-    /*src: url(runescape_bold.ttf);*/
 }
+
 @font-face {
     font-family: 'RuneScape Bold';
     src: url(runescape_bold.ttf);
@@ -31,13 +32,12 @@ html {
 }
 
 
-
 body {
-    background-image: url('Bank_interface.png');
+    background-image: url('Bank_interface1.png');
     background-repeat: no-repeat;
     display: flex;
-    height:100vh;
-    margin:0;
+    height: 100vh;
+    margin: 0;
 }
 
 .grid-container {
@@ -46,10 +46,10 @@ body {
     left: 48px;
     display: grid;
     grid-template-columns: repeat(8, 1fr);
-    grid-template-rows: repeat(6, 1fr);
+    grid-template-rows: repeat(11, 1fr);
     align-items: normal;
     width: 388px;
-    height: 202px;
+    height: 380px;
     gap: 0;
 }
 
@@ -66,7 +66,7 @@ body {
 }
 
 .text-container {
-    font-family: RuneScape, serif;
+    font-family: 'RuneScape', serif;
     color: yellow;
     font-size: 15px;
     position: fixed;
@@ -74,10 +74,10 @@ body {
     left: 56px;
     display: grid;
     grid-template-columns: repeat(8, 1fr);
-    grid-template-rows: repeat(6, 1fr);
+    grid-template-rows: repeat(11, 1fr);
     align-items: normal;
     width: 388px;
-    height: 202px;
+    height: 380px;
     gap: 0;
 
 }

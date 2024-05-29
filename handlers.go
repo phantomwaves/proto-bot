@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
@@ -63,11 +64,12 @@ var CommandHandlers = map[string]func(s *discordgo.Session, i *discordgo.Interac
 				},
 			})
 		} else {
+			log.Printf("Making query for %v %v...", options[1].IntValue(), options[0].StringValue())
 			u := dropsim.GetDropsData(options[0].StringValue())
-			log.Println(u.String())
+			log.Printf("Sending query for %v %v...", options[1].IntValue(), options[0].StringValue())
 			res, err := http.Get(u.String())
 			if err != nil {
-				log.Printf("wiki request failed. %v\n", err)
+				log.Printf("request failed. %v\n", err)
 			}
 			b, _ := io.ReadAll(res.Body)
 			dat := dropsim.DropWrapper{}
@@ -76,14 +78,30 @@ var CommandHandlers = map[string]func(s *discordgo.Session, i *discordgo.Interac
 				log.Printf("error unmarshalling json: %v\n", err)
 			}
 			dt := dat.ParseDrops()
-			response := fmt.Sprintf("Simulating loot from %v %v kills...\n",
-				options[1].IntValue(), options[0].StringValue())
-			response += dt.Sample(int(options[1].IntValue()))
+			log.Printf("Sampling %v %v...", options[1].IntValue(), options[0].StringValue())
+			itemCounts := dt.Sample(int(options[1].IntValue()))
+
+			r := dropsim.ResponseImage{
+				Title: fmt.Sprintf("Loot from %v %v", options[1].IntValue(), options[0].StringValue()),
+			}
+			log.Printf("Making image %v %v...", options[1].IntValue(), options[0].StringValue())
+			r.MakeResponse(itemCounts)
+			img, err := r.GetScreenshot(r.Filepath)
+			if err != nil {
+				log.Printf("error getting image: %v\n", err)
+			}
+			rd := bytes.NewReader(img)
 
 			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{
-					Content: response,
+					Files: []*discordgo.File{
+						{
+							ContentType: "image",
+							Name:        "Drops.png",
+							Reader:      rd,
+						},
+					},
 				},
 			})
 		}
