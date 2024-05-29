@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -32,16 +33,19 @@ var BannedItems = "brimstone key" +
 	"frozen key piece (bandos)" +
 	"frozen key piece (zamorak)" +
 	"frozen key piece (armadyl)" +
-	"Kq head (tattered)"
+	"Kq head (tattered)" +
+	"Brimstone key"
 
 type Drop struct {
-	Name         string `json:"Dropped item"`
+	Name         string
+	RawName      string `json:"Dropped item"`
 	Rarity       string `json:"Rarity"`
 	RawRarity    float64
 	QuantityHigh int `json:"Quantity High"`
 	QuantityLow  int `json:"Quantity Low"`
 	QuantityAvg  int
 	Rolls        int `json:"Rolls"`
+	ImagePath    string
 }
 
 type DropTable struct {
@@ -61,7 +65,7 @@ type DropWrapper struct {
 
 func main() {
 	boss := "Kree'arra"
-	u := GetQuery(boss)
+	u := GetDropsData(boss)
 
 	res, err := http.Get(u.String())
 	if err != nil {
@@ -128,11 +132,16 @@ func (d *DropWrapper) ParseDrops() DropTable {
 			if err := drop.convertRarity(); err != nil {
 				log.Fatalf("Error converting rarity: %v", err)
 			}
-			drop.Name = strings.ReplaceAll(drop.Name, "#", " ")
+			drop.Name = strings.ReplaceAll(drop.RawName, "#", " ")
 			drop.QuantityAvg = (drop.QuantityHigh + drop.QuantityLow) / 2
 			if !strings.Contains(BannedItems, strings.ToLower(drop.Name)) {
 				output.Drops = append(output.Drops, drop)
 			}
+			err := drop.GetImage()
+			if err != nil {
+				log.Fatalf("Error getting image for %s: %v", drop.Name, err)
+			}
+
 		}
 
 	}
@@ -140,7 +149,7 @@ func (d *DropWrapper) ParseDrops() DropTable {
 	return output
 }
 
-func GetQuery(boss string) url.URL {
+func GetDropsData(boss string) url.URL {
 	u := url.URL{
 		Scheme:   "https",
 		Host:     "oldschool.runescape.wiki",
@@ -150,4 +159,44 @@ func GetQuery(boss string) url.URL {
 	q := fmt.Sprintf("[[-Has subobject::%s]]|[[Drop JSON::+]]|?Drop JSON|limit=10000", boss)
 	u.RawQuery += url.QueryEscape(q)
 	return u
+}
+
+func (d *Drop) GetImage() error {
+	path := fmt.Sprintf("images/%s.png", d.Name)
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		return nil
+	}
+	u := url.URL{
+		Scheme: "https",
+		Host:   "oldschool.runescape.wiki",
+		Path: "images/" +
+			strings.ReplaceAll(strings.ReplaceAll(
+				fmt.Sprintf("%s", d.RawName), " ", "_"), "#", ""),
+	}
+	l := strings.ToLower(d.Name)
+	if strings.Contains(l, "arrow") ||
+		strings.Contains(l, "bolt") ||
+		strings.Contains(l, "seed") ||
+		strings.Contains(l, "scales") ||
+		strings.Contains(l, "brimstone key") {
+		u.Path += url.PathEscape("_5")
+	}
+	if strings.Contains(l, "coins") {
+		u.Path += url.PathEscape("_10000")
+	}
+
+	u.Path += url.PathEscape(".png")
+	log.Println(u.String())
+	r, err := http.Get(u.String())
+	if err != nil {
+		return err
+	}
+	defer r.Body.Close()
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		return err
+	}
+	os.WriteFile(path, data, 0666)
+	d.ImagePath = fmt.Sprintf("images/%s.png", d.Name)
+	return nil
 }

@@ -63,7 +63,7 @@ var CommandHandlers = map[string]func(s *discordgo.Session, i *discordgo.Interac
 				},
 			})
 		} else {
-			u := dropsim.GetQuery(options[0].StringValue())
+			u := dropsim.GetDropsData(options[0].StringValue())
 			log.Println(u.String())
 			res, err := http.Get(u.String())
 			if err != nil {

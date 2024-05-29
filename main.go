@@ -82,6 +82,7 @@ var commands = []*discordgo.ApplicationCommand{
 }
 
 func main() {
+	dropsim.ScreenshotTest()
 	s.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
 		log.Printf("Logged in as %v#%v", s.State.User.Username, s.State.User.Discriminator)
 	})
