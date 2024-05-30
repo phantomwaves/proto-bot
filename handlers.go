@@ -2,16 +2,23 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
+	"database/sql"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"github.com/phantomwaves/proto/dropsim"
-	"io"
 	"log"
 	"math/rand"
-	"net/http"
 	"strings"
 )
+
+func validBoss(boss string) bool {
+	for _, b := range dropsim.SupportedBosses {
+		if b == boss {
+			return true
+		}
+	}
+	return false
+}
 
 func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
@@ -48,15 +55,11 @@ var CommandHandlers = map[string]func(s *discordgo.Session, i *discordgo.Interac
 	},
 
 	"dropsim": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+		log.Println("received request for dropsim")
 		options := i.ApplicationCommandData().Options
-		if !func() bool {
-			for _, b := range dropsim.SupportedBosses {
-				if b == i.ApplicationCommandData().Options[0].StringValue() {
-					return true
-				}
-			}
-			return false
-		}() {
+		boss := options[0].StringValue()
+		n := options[1].IntValue()
+		if !validBoss(boss) {
 			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{
@@ -64,27 +67,46 @@ var CommandHandlers = map[string]func(s *discordgo.Session, i *discordgo.Interac
 				},
 			})
 		} else {
-			log.Printf("Making query for %v %v...", options[1].IntValue(), options[0].StringValue())
-			u := dropsim.GetDropsData(options[0].StringValue())
-			log.Printf("Sending query for %v %v...", options[1].IntValue(), options[0].StringValue())
-			res, err := http.Get(u.String())
+			db, err := sql.Open("sqlite3", "./drops.db")
 			if err != nil {
-				log.Printf("request failed. %v\n", err)
+				log.Fatalf("Error opening db: %v", err)
 			}
-			b, _ := io.ReadAll(res.Body)
-			dat := dropsim.DropWrapper{}
-			err = json.Unmarshal(b, &dat)
+			defer db.Close()
+
+			dt, err := dropsim.GetBoss(db, boss)
 			if err != nil {
-				log.Printf("error unmarshalling json: %v\n", err)
+				log.Printf("Error reading boss: %v", err)
 			}
-			dt := dat.ParseDrops()
-			log.Printf("Sampling %v %v...", options[1].IntValue(), options[0].StringValue())
-			itemCounts := dt.Sample(int(options[1].IntValue()))
+			if len(dt.Drops) == 0 {
+				log.Printf("Database entry doesn't exist. Sending API query for %v %v...", n, boss)
+				dt, err = dropsim.GetAPIResponse(boss)
+				if err != nil {
+					log.Fatalf("Error making api query: %v", err)
+				}
+				err := dropsim.AddBoss(db, dt, boss)
+				if err != nil {
+					log.Fatalf("Error adding boss to DB: %v", err)
+				}
+			}
+
+			tbl, err := dropsim.GetDropsTable(db, boss)
+			if err != nil {
+				log.Printf("Error reading DB: %v", err)
+			}
+			if len(tbl) == 0 {
+				tbl = dt.MakeDropTable()
+				err = dropsim.AddDropsTable(db, tbl, boss)
+				if err != nil {
+					log.Fatalf("Error adding drops table to DB: %v", err)
+				}
+			}
+			log.Printf("Sampling %v %v...", n, boss)
+			itemCounts := dt.Sample(int(n), tbl, boss)
 
 			r := dropsim.ResponseImage{
-				Title: fmt.Sprintf("Loot from %v %v", options[1].IntValue(), options[0].StringValue()),
+				Title: fmt.Sprintf("Loot from %v %v", n, boss),
 			}
-			log.Printf("Making image %v %v...", options[1].IntValue(), options[0].StringValue())
+			log.Printf("Making image %v %v...", n, boss)
 			r.MakeResponse(itemCounts)
 			img, err := r.GetScreenshot(r.Filepath)
 			if err != nil {

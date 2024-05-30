@@ -28,6 +28,7 @@ var SupportedBosses = []string{
 	"Zulrah",
 }
 
+// BannedItems Items that are too annoying to account for due to variable droprates
 var BannedItems = "brimstone key" +
 	"frozen key piece (saradomin)" +
 	"frozen key piece (bandos)" +
@@ -35,6 +36,34 @@ var BannedItems = "brimstone key" +
 	"frozen key piece (armadyl)" +
 	"Kq head (tattered)" +
 	"Brimstone key"
+
+// Tertiary TODO add separate tertiary rolls
+var Tertiary = []string{
+	"Clue scroll (hard)",
+	"Clue scroll (elite)",
+	"Long bone",
+	"Curved bone",
+	"Tattered moon page",
+	"Tattered sun page",
+	"Tattered temple page",
+	"Grubby key",
+	"Giant egg sac(full)",
+}
+
+// SpecialCases has items that drop together but the wiki api doesn't provide info on
+var SpecialCases = map[string]map[string]string{
+	"Kree'arra": {
+		"Ranging potion (3)": "Super defence (3)",
+	},
+	"K'ril Tsutsaroth": {
+		"Super attack (3)":  "Super strength (3)",
+		"Super restore (3)": "Zamorak brew (3)",
+	},
+	"Commander Zilyana": {
+		"Super defence (3)":  "Magic potion (3)",
+		"Saradomin brew (3)": "Super restore (4)",
+	},
+}
 
 type Drop struct {
 	Name         string
@@ -46,11 +75,13 @@ type Drop struct {
 	QuantityAvg  int
 	Rolls        int `json:"Rolls"`
 	ImagePath    string
+	ID           int
 }
 
-type DropTable struct {
-	Drops []Drop
-	Rolls int
+type DropList struct {
+	Drops    []Drop
+	Rolls    int
+	BossName string
 }
 
 type DropWrapper struct {
@@ -65,7 +96,7 @@ type DropWrapper struct {
 
 func main() {
 	boss := "Kree'arra"
-	u := GetDropsData(boss)
+	u := getQueryURL(boss)
 
 	res, err := http.Get(u.String())
 	if err != nil {
@@ -78,17 +109,15 @@ func main() {
 	if err2 != nil {
 		log.Fatal(err2)
 	}
-	dt := dat.ParseDrops()
+	dt := dat.ParseDrops(boss)
 	x := dt.CheckTotalP()
 	fmt.Printf("P = %.5f\n", x)
 	r := dt.getRarest()
 	fmt.Printf("Rarest = %d\n", r)
 
-	dt.Sample(500)
-
 }
 
-func (d *Drop) convertRarity() error {
+func (d *Drop) GetRawRarity() error {
 	if d.Rarity == "Undefined" {
 		d.RawRarity = 1
 		return nil
@@ -109,8 +138,8 @@ func (d *Drop) convertRarity() error {
 	return nil
 }
 
-func (d *DropWrapper) ParseDrops() DropTable {
-	var output DropTable
+func (d *DropWrapper) ParseDrops(boss string) DropList {
+	var output DropList
 	for _, v := range d.Query.Results {
 		for _, d := range v.Printouts.DropJSON {
 			drop := Drop{}
@@ -129,7 +158,7 @@ func (d *DropWrapper) ParseDrops() DropTable {
 			case "Once":
 				drop.Rarity = "Undefined"
 			}
-			if err := drop.convertRarity(); err != nil {
+			if err := drop.GetRawRarity(); err != nil {
 				log.Fatalf("Error converting rarity: %v", err)
 			}
 			drop.Name = strings.ReplaceAll(drop.RawName, "#", " ")
@@ -146,10 +175,27 @@ func (d *DropWrapper) ParseDrops() DropTable {
 
 	}
 	output.Rolls = output.Drops[0].Rolls
+	output.BossName = boss
 	return output
 }
 
-func GetDropsData(boss string) url.URL {
+func GetAPIResponse(boss string) (DropList, error) {
+	u := getQueryURL(boss)
+	res, err := http.Get(u.String())
+	if err != nil {
+		return DropList{}, err
+	}
+	b, _ := io.ReadAll(res.Body)
+	dat := DropWrapper{}
+	err = json.Unmarshal(b, &dat)
+	if err != nil {
+		return DropList{}, err
+	}
+	dt := dat.ParseDrops(boss)
+	return dt, nil
+}
+
+func getQueryURL(boss string) url.URL {
 	u := url.URL{
 		Scheme:   "https",
 		Host:     "oldschool.runescape.wiki",
